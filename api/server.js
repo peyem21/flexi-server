@@ -7,7 +7,14 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000; // Vercel sets this environment variable
 
-app.use(cors());
+// Set up CORS to allow requests from your frontend URL
+app.use(cors({
+    origin: 'http://localhost:3000', // Allow requests from your React app's local dev environment
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type'],
+  }));
+
+  
 app.use(express.json());
 
 const storage = multer.memoryStorage();
