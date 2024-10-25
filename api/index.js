@@ -12,7 +12,7 @@ const allowedOrigins = [
     'http://localhost:5173',
     'https://flexihomesrealty.com',    // Add your domain
     'https://www.flexihomesrealty.com', // Add www subdomain
-    'https://flexi-homes.vercel.app/' // Add any deployment domains
+    'https://www.flexi-homes.vercel.app/' // Add any deployment domains
 ];
 
 console.log('Allowed origins:', allowedOrigins); // Debug log
