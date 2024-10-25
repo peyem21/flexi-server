@@ -6,13 +6,16 @@ import nodemailer from 'nodemailer';
 
 const app = express();
 
-// CORS configuration
+// CORS configuration with debugging
 const allowedOrigins = [
-  'http://localhost:3000',    // React dev server
-  'http://localhost:5173',    // Vite dev server
-  'https://flexihomesrealty.com', // Replace with your actual domain
-  'https://flexihomesrealty.com/contact' // Include www subdomain if needed
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://flexihomesrealty.com',    // Add your domain
+    'https://www.flexihomesrealty.com', // Add www subdomain
+    'https://flexi-homes.vercel.app/' // Add any deployment domains
 ];
+
+console.log('Allowed origins:', allowedOrigins); // Debug log
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -110,6 +113,25 @@ app.post('/api/send-email', cors(corsOptions), upload.fields([
     } catch (error) {
         console.error('Error sending email:', error);
         res.status(500).json({ error: 'Failed to send email' });
+    }
+});
+
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error occurred:', err);
+    if (err.message === 'Not allowed by CORS') {
+        res.status(403).json({
+            error: 'CORS error',
+            message: 'Origin not allowed',
+            requestOrigin: req.headers.origin,
+            allowedOrigins: allowedOrigins
+        });
+    } else {
+        res.status(500).json({
+            error: 'Internal server error',
+            message: err.message
+        });
     }
 });
 
