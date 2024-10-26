@@ -9,7 +9,7 @@ const app = express();
 // Define allowed origins explicitly including your Vercel domains
 const allowedOrigins = [
     'http://localhost:3000',
-    'http://localhost:5173',
+    // 'http://localhost:5173',
     'https://flexihomesrealty.com',        // Your frontend domain
     'https://new-flexi-server.vercel.app'    // Your backend domain
 ];
