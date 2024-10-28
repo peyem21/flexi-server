@@ -76,10 +76,10 @@ const createTransporter = () => {
     try {
         // Log environment variables (remove in production)
         console.log('SMTP Configuration:', {
-            host: process.env.SMTP_HOST,
-            port: process.env.SMTP_PORT,
-            user: process.env.SMTP_USER ? 'Set' : 'Not set',
-            pass: process.env.SMTP_PASS ? 'Set' : 'Not set'
+            host: "smtp.hostinger.com",
+            port: '465',
+            user: "contact@flexihomesrealty.com",
+            pass: 'Abuja912@'
         });
 
         return nodemailer.createTransport({
@@ -87,8 +87,8 @@ const createTransporter = () => {
             port: 465,
             secure: true, // true for 465, false for other ports
             auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS
+                user: "contact@flexihomesrealty.com",
+                pass: "Abuja912@"
             },
             tls: {
                 rejectUnauthorized: true
