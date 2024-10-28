@@ -100,17 +100,31 @@ const createTransporter = () => {
     }
 };
 
-// Test email endpoint
-app.get('/api/test-email', async (req, res) => {
+// Add this test endpoint to verify SMTP connection
+app.get('/api/test-smtp', async (req, res) => {
+    let transporter;
     try {
-        const transporter = createTransporter();
-        await transporter.verify();
-        res.json({ message: 'Email configuration is working' });
-    } catch (error) {
-        res.status(500).json({ 
-            error: 'Email configuration failed',
-            details: error.message 
+        transporter = nodemailer.createTransport({
+            host: 'smtp.hostinger.com',
+            port: 465,
+            secure: true,
+            auth: {
+                user: "contact@flexihomesrealty.com",
+                pass: "Abuja912@"
+            },
+            debug: true
         });
+
+        await transporter.verify();
+        res.json({ message: 'SMTP connection successful' });
+    } catch (error) {
+        console.error('SMTP test failed:', error);
+        res.status(500).json({
+            error: 'SMTP connection failed',
+            details: error.message
+        });
+    } finally {
+        if (transporter) transporter.close();
     }
 });
 
@@ -138,39 +152,72 @@ app.post('/api/contact', async (req, res) => {
     }
 });
 
-// Email sending endpoint
+// Modified email sending endpoint with enhanced error handling and logging
 app.post('/api/send-email', upload.fields([
     { name: 'passport', maxCount: 1 },
     { name: 'validID', maxCount: 1 }
 ]), async (req, res) => {
     let transporter;
     try {
-        // Create transporter
-        transporter = createTransporter();
+        // Debug log the incoming request
+        console.log('Received form submission:', {
+            body: { ...req.body, files: req.files ? Object.keys(req.files) : [] }
+        });
+
+        // Create transporter with debug logging
+        console.log('Creating email transporter with config:', {
+            host: 'smtp.hostinger.com',
+            port: 465,
+            secure: true,
+            auth: { user: "contact@flexihomesrealty.com" }
+            // Don't log the password
+        });
+
+        transporter = nodemailer.createTransport({
+            host: 'smtp.hostinger.com',
+            port: 465,
+            secure: true,
+            auth: {
+                user: "contact@flexihomesrealty.com",
+                pass: "Abuja912@"
+            },
+            debug: true, // Enable debug logging
+            logger: true  // Enable built-in logger
+        });
 
         const { name, email, phoneNumber, address, website, bankName, acctNo } = req.body;
 
-        // Input validation
+        // Log the extracted data
+        console.log('Extracted form data:', { name, email, phoneNumber });
+
+        // Input validation with detailed logging
         if (!name?.trim() || !email?.trim() || !phoneNumber?.trim()) {
-            return res.status(400).json({ error: 'Required fields are missing' });
+            console.log('Validation failed - missing required fields:', { name, email, phoneNumber });
+            return res.status(400).json({ 
+                error: 'Required fields are missing',
+                details: {
+                    name: !name?.trim() ? 'missing' : 'present',
+                    email: !email?.trim() ? 'missing' : 'present',
+                    phoneNumber: !phoneNumber?.trim() ? 'missing' : 'present'
+                }
+            });
         }
 
         // Email format validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
+            console.log('Invalid email format:', email);
             return res.status(400).json({ error: 'Please provide a valid email address.' });
         }
 
-        // Log attempt to send email
-        console.log('Attempting to send email with data:', {
-            to: "contact@flexihomesrealty.com",
-            from: "contact@flexihomesrealty.com",
-            subject: 'New Affiliate Application'
-        });
+        // Verify transporter before sending
+        console.log('Verifying email transporter...');
+        await transporter.verify();
+        console.log('Transporter verified successfully');
 
         const mailOptions = {
             from: {
-                name: 'Your Company Name',
+                name: 'FlexiHomes Realty',
                 address: "contact@flexihomesrealty.com"
             },
             to: "contact@flexihomesrealty.com",
@@ -197,13 +244,20 @@ app.post('/api/send-email', upload.fields([
             ].filter(Boolean)
         };
 
-        // Verify connection
-        await transporter.verify();
-        console.log('Transporter verified successfully');
+        // Log mail options (excluding sensitive data)
+        console.log('Attempting to send email with options:', {
+            from: mailOptions.from,
+            to: mailOptions.to,
+            subject: mailOptions.subject,
+            attachments: mailOptions.attachments ? mailOptions.attachments.length : 0
+        });
 
         // Send email
         const info = await transporter.sendMail(mailOptions);
-        console.log('Email sent successfully:', info.messageId);
+        console.log('Email sent successfully:', {
+            messageId: info.messageId,
+            response: info.response
+        });
 
         res.status(200).json({ 
             message: 'Form submitted successfully',
@@ -211,27 +265,57 @@ app.post('/api/send-email', upload.fields([
         });
 
     } catch (error) {
+        // Enhanced error logging
         console.error('Detailed email error:', {
+            name: error.name,
             message: error.message,
             code: error.code,
             command: error.command,
-            stack: error.stack
+            stack: error.stack,
+            response: error.response,
+            responseCode: error.responseCode
         });
 
-        // Specific error handling
-        if (error.code === 'EAUTH') {
-            return res.status(500).json({ error: 'Email authentication failed. Please check SMTP credentials.' });
-        }
-        if (error.code === 'ESOCKET') {
-            return res.status(500).json({ error: 'Could not connect to email server. Please check SMTP settings.' });
-        }
-
-        res.status(500).json({ 
+        // Send appropriate error response based on the error type
+        let errorResponse = {
             error: 'Failed to send email',
-            details: production === 'development' ? error.message : 'Internal server error'
-        });
+            details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        };
+
+        switch (error.code) {
+            case 'EAUTH':
+                errorResponse = {
+                    error: 'Email authentication failed. Please check SMTP credentials.',
+                    code: 'EAUTH'
+                };
+                break;
+            case 'ESOCKET':
+                errorResponse = {
+                    error: 'Could not connect to email server. Please check SMTP settings.',
+                    code: 'ESOCKET'
+                };
+                break;
+            case 'ECONNECTION':
+                errorResponse = {
+                    error: 'Connection to email server failed.',
+                    code: 'ECONNECTION'
+                };
+                break;
+            case 'ETIMEDOUT':
+                errorResponse = {
+                    error: 'Connection to email server timed out.',
+                    code: 'ETIMEDOUT'
+                };
+                break;
+            default:
+                // Keep the default error response
+                break;
+        }
+
+        res.status(500).json(errorResponse);
     } finally {
         if (transporter) {
+            console.log('Closing transporter connection');
             transporter.close();
         }
     }
