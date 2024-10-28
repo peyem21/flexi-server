@@ -163,17 +163,17 @@ app.post('/api/send-email', upload.fields([
 
         // Log attempt to send email
         console.log('Attempting to send email with data:', {
-            to: process.env.SMTP_USER,
-            from: process.env.SMTP_USER,
+            to: "contact@flexihomesrealty.com",
+            from: "contact@flexihomesrealty.com",
             subject: 'New Affiliate Application'
         });
 
         const mailOptions = {
             from: {
                 name: 'Your Company Name',
-                address: process.env.SMTP_USER
+                address: "contact@flexihomesrealty.com"
             },
-            to: process.env.SMTP_USER,
+            to: "contact@flexihomesrealty.com",
             subject: 'New Affiliate Application',
             html: `
                 <h2>New Affiliate Application</h2>
@@ -228,7 +228,7 @@ app.post('/api/send-email', upload.fields([
 
         res.status(500).json({ 
             error: 'Failed to send email',
-            details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+            details: production === 'development' ? error.message : 'Internal server error'
         });
     } finally {
         if (transporter) {
@@ -242,7 +242,7 @@ app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+        message: production === 'development' ? err.message : undefined
     });
 });
 
