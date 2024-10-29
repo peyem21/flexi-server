@@ -113,71 +113,144 @@
 // });
 // export default app;
 
-
-// api/submit.js
-import express from 'express';
-import multer from 'multer';
+// pages/api/submit.js
+import { IncomingForm } from 'formidable';
 import nodemailer from 'nodemailer';
 
-const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+// Create email transporter based on environment
+const createTransporter = () => {
+  // Check if running locally
+  const isLocal = process.env.NODE_ENV === 'development';
 
-// Middleware to parse JSON and URL-encoded data
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Configure Nodemailer transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST, // e.g., 'smtp.gmail.com'
-  port: process.env.SMTP_PORT, // e.g., 465 for SSL, 587 for TLS
-  secure: true, // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
-app.post('/api/submit', upload.fields([{ name: 'passport' }, { name: 'validID' }]), async (req, res) => {
-  const { name, email, phoneNumber, address, website, bankName, acctNo, agreement } = req.body;
-
-  // Access uploaded files
-  const passport = req.files['passport'] ? req.files['passport'][0] : null;
-  const validID = req.files['validID'] ? req.files['validID'][0] : null;
-
-  // Basic validation for required fields
-  if (!name || !email || !phoneNumber || !agreement) {
-    return res.status(400).json({ error: 'Please fill in all required fields and agree to the terms.' });
+  if (isLocal) {
+    // Local development - Use a test account
+    return nodemailer.createTestAccount().then(testAccount => {
+      return nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    });
+  } else {
+    // Production - Use Hostinger SMTP
+    return Promise.resolve(nodemailer.createTransport({
+      host: 'smtp.hostinger.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.EMAIL_ADDRESS,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    }));
   }
+};
 
-  // Prepare the email content
-  const mailOptions = {
-    from: process.env.SMTP_USER,
-    to: process.env.RECIPIENT_EMAIL, // Email address to receive the form submissions
-    subject: `New Affiliate Program Submission from ${name}`,
-    text: `
-      Name: ${name}
-      Email: ${email}
-      Phone Number: ${phoneNumber}
-      Address: ${address || 'Not provided'}
-      Website: ${website || 'Not provided'}
-      Bank Name: ${bankName || 'Not provided'}
-      Account Number: ${acctNo || 'Not provided'}
-      Agreement: ${agreement ? 'Agreed to terms' : 'Did not agree to terms'}
-    `,
-    attachments: [
-      ...(passport ? [{ filename: passport.originalname, content: passport.buffer }] : []),
-      ...(validID ? [{ filename: validID.originalname, content: validID.buffer }] : []),
-    ],
-  };
+// Helper function to parse multipart form data
+const parseForm = async (req) => {
+  return new Promise((resolve, reject) => {
+    let options = {
+      maxFileSize: 10 * 1024 * 1024,
+      keepExtensions: true,
+      uploadDir: '/tmp',
+      filename: (_name, _ext, part) => part.originalFilename,
+    };
+
+    const form = new IncomingForm(options);
+
+    let fields = {};
+    let files = {};
+
+    form.on('field', (field, value) => {
+      fields[field] = value;
+    });
+
+    form.on('file', (field, file) => {
+      files[field] = file;
+    });
+
+    form.on('end', () => resolve({ fields, files }));
+    form.on('error', err => reject(err));
+
+    form.parse(req);
+  });
+};
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
 
   try {
-    // Send the email
-    await transporter.sendMail(mailOptions);
-    res.status(200).json({ message: 'Form successfully submitted and emailed!' });
-  } catch (error) {
-    console.error('Error sending email:', error);
-    res.status(500).json({ error: 'Failed to send email' });
-  }
-});
+    // Get the appropriate transporter
+    const transporter = await createTransporter();
+    
+    // Parse the form data
+    const { fields, files } = await parseForm(req);
 
-export default app;
+    // Prepare email attachments
+    const attachments = [];
+
+    // Add passport file if it exists
+    if (files.passport) {
+      attachments.push({
+        filename: files.passport.originalFilename,
+        content: files.passport.data,
+        encoding: 'base64',
+      });
+    }
+
+    // Add valid ID file if it exists
+    if (files.validID) {
+      attachments.push({
+        filename: files.validID.originalFilename,
+        content: files.validID.data,
+        encoding: 'base64',
+      });
+    }
+
+    // Create HTML email content
+    const htmlContent = `
+      <h2>New Affiliate Application</h2>
+      <p><strong>Name:</strong> ${fields.name}</p>
+      <p><strong>Email:</strong> ${fields.email}</p>
+      <p><strong>Phone Number:</strong> ${fields.phoneNumber}</p>
+      <p><strong>Address:</strong> ${fields.address || 'Not provided'}</p>
+      ${fields.website ? `<p><strong>Website:</strong> ${fields.website}</p>` : ''}
+      ${fields.bankName ? `<p><strong>Bank Name:</strong> ${fields.bankName}</p>` : ''}
+      ${fields.acctNo ? `<p><strong>Account Number:</strong> ${fields.acctNo}</p>` : ''}
+    `;
+
+    // Send email
+    const info = await transporter.sendMail({
+      from: process.env.NODE_ENV === 'development' ? 'test@example.com' : process.env.EMAIL_ADDRESS,
+      to: process.env.NODE_ENV === 'development' ? 'test@example.com' : process.env.EMAIL_ADDRESS,
+      subject: `New Affiliate Application from ${fields.name}`,
+      html: htmlContent,
+      attachments: attachments,
+      replyTo: fields.email,
+    });
+
+    // For local development, log the email preview URL
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+
+    res.status(200).json({ 
+      message: 'Application submitted successfully',
+      previewUrl: process.env.NODE_ENV === 'development' ? nodemailer.getTestMessageUrl(info) : null
+    });
+  } catch (error) {
+    console.error('Error processing submission:', error);
+    res.status(500).json({ message: 'Error processing your application' });
+  }
+}
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
